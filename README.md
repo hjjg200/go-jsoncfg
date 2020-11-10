@@ -59,7 +59,7 @@ You can use validator functions to verify configurations.
 
 ```go
 type Foo struct{Odd, Iam22 int}
-var defFoo = Foo{Odd: 1, Iam22: 22}
+var defFoo = Foo{Odd: 1}
 parser, _ := jsoncfg.NewParser(&defFoo)
 
 parser.SetValidator(&defFoo.Odd, func(v int) bool {

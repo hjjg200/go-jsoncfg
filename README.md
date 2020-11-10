@@ -19,7 +19,7 @@ After adding new members to configuration struct, package json will decode the o
 oldJson := []byte(`{"A": 10}`)
 type Foo struct{A, B int}  // Version 2: B is added
 defFoo := Foo{A: 0, B: 22} // Default foo value
-parser, _ := NewParser(&defFoo)
+parser, _ := jsoncfg.NewParser(&defFoo)
 
 var myFoo Foo // Empty foo value
 parser.Parse(oldJson, &myFoo)
@@ -39,7 +39,7 @@ type Foo struct{Bars []Bar}  // Slice of struct
 
 var defFoo Foo
 var defBar = Bar{Name: "it's bar"}
-parser, _ := NewParser(&defFoo)
+parser, _ := jsoncfg.NewParser(&defFoo)
 parser.SetSubDefault(&defBar) // Set default value for Bar
 
 // Parse
@@ -58,14 +58,14 @@ fmt.Println(myFoo)
 You can use validator functions to verify configurations.
 
 ```go
-type Foo struct{Odd, IAM22 int}
-var defFoo = Foo{Odd: 1, IAM22: 22}
-parser, _ := NewParser(&defFoo)
+type Foo struct{Odd, Iam22 int}
+var defFoo = Foo{Odd: 1, Iam22: 22}
+parser, _ := jsoncfg.NewParser(&defFoo)
 
 parser.SetValidator(&defFoo.Odd, func(v int) bool {
     return v % 2 == 1
 })
-parser.SetValidator(&defFoo.IAM22, func(pv *int) bool { // Notice it is a pointer
+parser.SetValidator(&defFoo.Iam22, func(pv *int) bool { // Notice it is a pointer
     *pv = 22 // You can change the value inside a validator
     return true
 })
@@ -81,7 +81,7 @@ fmt.Println(parser.Parse(abomination, &myFoo))
 // ERROR: Foo.Odd has an invalid value of 2
 
 data := []byte(`{
-    "Odd": 3, "IAM22": -1
+    "Odd": 3, "Iam22": -1
 }`)
 parser.Parse(data, &myFoo)
 fmt.Println(myFoo)

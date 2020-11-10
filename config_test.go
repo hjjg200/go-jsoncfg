@@ -1,4 +1,4 @@
-package config
+package jsoncfg
 
 import (
     "encoding/json"
@@ -104,13 +104,13 @@ func TestValidator(t *testing.T) {
     cfg := ACfg{}
 
     // Valid validators
-    parser.Validator(&def.Age, func(age *int) bool {
+    parser.SetValidator(&def.Age, func(age *int) bool {
         if *age == 24 {
             *age = 27
         }
         return *age > 0 && *age < 200
     })
-    parser.Validator(&def.Evens, func(evens []int) bool {
+    parser.SetValidator(&def.Evens, func(evens []int) bool {
         for _, e := range evens {
             if e % 2 != 0 {
                 return false
@@ -118,7 +118,7 @@ func TestValidator(t *testing.T) {
         }
         return true
     })
-    parser.Validator(&def.Map, func(m map[int] int) bool {
+    parser.SetValidator(&def.Map, func(m map[int] int) bool {
         for k, v := range m {
             if k != v {
                 return false
@@ -128,7 +128,7 @@ func TestValidator(t *testing.T) {
     })
 
     // Invalid validators
-    fmt.Println(parser.Validator(&def.Age, func(age string) bool {
+    fmt.Println(parser.SetValidator(&def.Age, func(age string) bool {
         return age == "age"
     }))
 
@@ -190,12 +190,12 @@ func TestChildDefaults(t *testing.T) {
     if err != nil {
         t.Error(err)
     }
-    err = parser.ChildDefaults(&bdef)
+    err = parser.SetSubDefault(&bdef)
     if err != nil {
         t.Error(err)
     }
 
-    parser.Validator(&bdef.Stars, func(i int) bool {
+    parser.SetValidator(&bdef.Stars, func(i int) bool {
         return i > 0
     })
 

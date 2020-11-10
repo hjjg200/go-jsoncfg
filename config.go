@@ -1,4 +1,4 @@
-package config
+package jsoncfg
 
 import (
     "encoding/json"
@@ -6,35 +6,27 @@ import (
     "reflect"
 )
 
+// Slice wrapper is needed to get a reflect.Type for interface{}
 var interfaceSlice []interface{}
 var interfaceType = reflect.TypeOf(interfaceSlice).Elem()
 
 type Parser struct {
-    def reflect.Value
-    typ reflect.Type // Struct that has its types converted to interfaces
-    sub []reflect.Value
-    vf  map[uintptr] reflect.Value
+    def reflect.Value   // Default value
+    sub []reflect.Value // Sub default values
+    typ reflect.Type    // Struct type that has its types converted to interfaces
+    vf  map[uintptr] reflect.Value // Validator functions
 }
 
-// Experimental must function
-func MustNewParser(cfg interface{}) *Parser {
-    p, err := NewParser(cfg)
-    if err != nil {
-        panic(err)
-    }
-    return p
-}
+func NewParser(pstr interface{}) (*Parser, error) {
 
-func NewParser(cfg interface{}) (*Parser, error) {
-
-    // Ensure cfg is struct
-    // cfg needs to be a pointer in order to be addressable value
-    if isPtrToStruct(cfg) == false {
+    // Ensure pstr is pointer to struct
+    // pstr needs to be a pointer in order to be an addressable value
+    if isPtrToStruct(pstr) == false {
         return nil, fmt.Errorf("The given parameter is not a pointer to struct")
     }
 
     // Struct to interface struct
-    def := reflect.ValueOf(cfg).Elem()
+    def := reflect.ValueOf(pstr).Elem()
     typ := fieldsToInterface(def.Type())
     
     // Return
@@ -47,7 +39,7 @@ func NewParser(cfg interface{}) (*Parser, error) {
 
 }
 
-// Make fiels whose zero value is not nil into interfaces
+// Make fields whose zero value is not nil into interfaces
 func fieldsToInterface(typ reflect.Type) reflect.Type {
 
     nf     := typ.NumField()
@@ -97,7 +89,7 @@ func fieldsToInterface(typ reflect.Type) reflect.Type {
 
 }
 
-func isPtrToStruct(pstr interface{}) (b bool) {
+func isPtrToStruct(pstr interface{}) bool {
     rv := reflect.ValueOf(pstr)
     return rv.Kind() == reflect.Ptr && rv.Elem().Kind() == reflect.Struct
 }
@@ -160,26 +152,30 @@ func(p *Parser) deepFillNil(def, a, b reflect.Value) { // a => b
             continue
         }
 
-        dv := def.Field(i)
+        dv := def.Field(i) // Default value for current member
         av := a.FieldByName(name) // as av has fewer fields, find fields by name
         bv := b.Field(i)
 
-        // Recursive
         if bv.Type().Kind() == reflect.Struct {
 
+            // If it is a struct member, do recursive call
             p.deepFillNil(dv, av, bv)
 
         } else {
 
+            // Non-struct
+
             if av.IsNil() { // nil interface value
 
-                // Put default value
+                // Nil value means that the member was not found in a
+                // Therefore, put default value
                 bv.Set(dv)
 
             } else { // av has value
                 
                 // Convert interfaces
                 switch bv.Type().Kind() {
+
                 case reflect.Bool:
             
                     v := av.Interface().(bool)
@@ -189,7 +185,7 @@ func(p *Parser) deepFillNil(def, a, b reflect.Value) { // a => b
                     reflect.Int64, reflect.Uint, reflect.Uint8, reflect.Uint16,
                     reflect.Uint32, reflect.Uint64, reflect.Float32, reflect.Float64:
             
-                    // All numbers in a is float64 as json decoded it
+                    // All numbers in a is float64 as encoding/json decoded it
                     rf64 := reflect.ValueOf(av.Interface().(float64))
                     bv.Set(rf64.Convert(bv.Type()))
             
@@ -206,11 +202,11 @@ func(p *Parser) deepFillNil(def, a, b reflect.Value) { // a => b
 
                         // Check for sub defaults
                         // Zero value for bv elem type is fallback in case of no sub default
-                        sub := reflect.New(bvElTyp).Elem()
+                        subDv := reflect.New(bvElTyp).Elem()
                         for _, each := range p.sub {
                             // Compare element type
                             if bvElTyp == each.Type() {
-                                sub = each
+                                subDv = each
                                 break
                             }
                         }
@@ -222,7 +218,7 @@ func(p *Parser) deepFillNil(def, a, b reflect.Value) { // a => b
                             for k := 0; k < av.Len(); k++ {
                                 subAv := av.Index(k)
                                 subBv := reflect.New(bvElTyp).Elem()
-                                p.deepFillNil(sub, subAv, subBv)
+                                p.deepFillNil(subDv, subAv, subBv)
                                 bv.Set(reflect.Append(bv, subBv))
                             }
                         case reflect.Map:
@@ -231,7 +227,7 @@ func(p *Parser) deepFillNil(def, a, b reflect.Value) { // a => b
                             for _, key := range keys {
                                 subAv := av.MapIndex(key)
                                 subBv := reflect.New(bvElTyp).Elem()
-                                p.deepFillNil(sub, subAv, subBv)
+                                p.deepFillNil(subDv, subAv, subBv)
                                 bv.SetMapIndex(key, subBv)
                             }
                         }
@@ -246,10 +242,9 @@ func(p *Parser) deepFillNil(def, a, b reflect.Value) { // a => b
 
             }
 
-            // Validate
+            // Find validator by its default value's address
             rvf, ok := p.vf[dv.Addr().Pointer()]
             if ok {
-
                 ins := make([]reflect.Value, 1)
                 bvt := bv.Type()
                 switch rvf.Type().In(0) {
@@ -265,7 +260,6 @@ func(p *Parser) deepFillNil(def, a, b reflect.Value) { // a => b
                         b.Type().Name(), b.Type().Field(i).Name, bv,
                     ))
                 }
-
             }
 
         }
@@ -274,7 +268,11 @@ func(p *Parser) deepFillNil(def, a, b reflect.Value) { // a => b
 }
 
 
-func(p *Parser) Validator(ptr, vf interface{}) error {
+func(p *Parser) SetValidator(ptr, vf interface{}) error {
+
+    // SetValidator sets a validator function for the entries
+    // that correspond to the pointer that is part of the default value
+    // The pointer must point to a member of the default value or the sub default values
 
     rptr := reflect.ValueOf(ptr)
     rel  := rptr.Elem()
@@ -303,25 +301,21 @@ func(p *Parser) Validator(ptr, vf interface{}) error {
 
 }
 
-// Child parser
-func(p *Parser) ChildDefaults(cfgs ...interface{}) (err error) {
+// Sub default definitions
+func(p *Parser) SetSubDefault(pstr interface{}) error {
 
     // Add parsers for structs inside array, map, or slice
 
-    for _, cfg := range cfgs {
-
-        // Ensure cfg is struct
-        if isPtrToStruct(cfg) == false {
-            return fmt.Errorf("One of the given parameters is not a pointer to struct")
-        }
-
-        // Struct to interface struct
-        def   := reflect.ValueOf(cfg).Elem()
-
-        // Prepend
-        p.sub  = append([]reflect.Value{def}, p.sub...)
-
+    // Ensure pstr is struct
+    if isPtrToStruct(pstr) == false {
+        return fmt.Errorf("The given parameters is not a pointer to struct")
     }
+
+    // Struct to interface struct
+    sub := reflect.ValueOf(pstr).Elem()
+
+    // Prepend so as to take precednce over the already added
+    p.sub = append([]reflect.Value{sub}, p.sub...)
 
     return nil
 

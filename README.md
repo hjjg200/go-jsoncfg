@@ -16,29 +16,16 @@ After adding new members to configuration struct, package json will decode the o
 
 ```go
 
-var oldCfg = []byte(`{
-    "a": 1
-}`) // version 1
+oldJson := []byte(`{"A": 10}`)
+type Foo struct{A, B int}  // Version 2: B is added
+defFoo := Foo{A: 0, B: 22} // Default foo value
+parser, _ := NewParser(&defFoo)
 
-type MyCfg struct { // version 2
-    A int `json:"a"`
-    B int `json:"b"`
-}
+var myFoo Foo // Empty foo value
+parser.Parse(oldJson, &myFoo)
 
-var DefaultMyCfg = MyCfg{
-    A: 0, B: 100,
-}
-
-func do() {
-    var cfg MyCfg
-    parser, _ := jsoncfg.NewParser(DefaultMyCfg)
-    _ = parser.Parse(oldCfg, &cfg)
-    fmt.Println(cfg)
-    
-    // MyCfg{
-    //   A: 1, B: 100,
-    // }
-}
+fmt.Println(myFoo)
+// {10 22}
 
 ```
 
@@ -47,47 +34,23 @@ func do() {
 Package jsoncfg can put default values for the structs in slices or maps.
 
 ```go
+type Bar struct{Name string} // Sub member
+type Foo struct{Bars []Bar}  // Slice of struct
 
-type SubCfg struct {
-    B1 int `json:"b1"`
-}
+var defFoo Foo
+var defBar = Bar{Name: "it's bar"}
+parser, _ := NewParser(&defFoo)
+parser.SetSubDefault(&defBar) // Set default value for Bar
 
-type MyCfg struct {
-    A []SubCfg `json:"a"`
-}
+// Parse
+var myFoo Foo
+data := []byte(`{
+    "Bars": [{}, {}]
+}`) // Two empty bars
+parser.Parse(data, &myFoo)
 
-var data = []byte(`{
-    "a": [
-        {}
-    ]
-}`)
-
-var DefaultSubCfg = SubCfg{
-    B1: 50,
-}
-
-var DefaultMyCfg = MyCfg{
-    A: []SubCfg{},
-}
-
-func do() {
-    var cfg MyCfg
-    parser, _ := jsoncfg.NewParser(DefaultMyCfg)
-    parser.ChildDefaults{ // Register child defaults
-        &DefaultSubCfg,
-    }
-    _ = parser.Parse(data, &cfg)
-    fmt.Println(cfg)
-
-    // MyCfg{
-    //   A: []SubCfg{
-    //     SubCfg{
-    //       B1: 50,
-    //     },
-    //   },
-    // }
-}
-
+fmt.Println(myFoo)
+// {[{it's bar} {it's bar}]}
 ```
 
 ### Validators
@@ -95,50 +58,32 @@ func do() {
 You can use validator functions to verify configurations.
 
 ```go
+type Foo struct{Odd, IAM22 int}
+var defFoo = Foo{Odd: 1, IAM22: 22}
+parser, _ := NewParser(&defFoo)
 
-type MyCfg struct {
-    A int `json:"a"`
-    B int `json:"b"`
-}
+parser.SetValidator(&defFoo.Odd, func(v int) bool {
+    return v % 2 == 1
+})
+parser.SetValidator(&defFoo.IAM22, func(pv *int) bool { // Notice it is a pointer
+    *pv = 22 // You can change the value inside a validator
+    return true
+})
 
-var DefaultMyCfg = MyCfg{
-    A: 1, B: 2,
-}
+// Parse
+var myFoo Foo
 
-var data = []byte(`{
-    "a": -1,
-    "b": 22
+// Wrong data
+abomination := []byte(`{
+    "Odd": 2
 }`)
+fmt.Println(parser.Parse(abomination, &myFoo))
+// ERROR: Foo.Odd has an invalid value of 2
 
-func do() {
-
-    var cfg MyCfg
-    parser, _ := jsoncfg.NewParser(DefaultMyCfg)
-    parser.Validator(&DefaultMyCfg.A, func(v int) bool {
-        return i > 0
-    })
-
-    _ = parser.Parse(data, &cfg)
-    // Error: A has an invalid value of -1
-
-    parser.Validator(&DefaultMyCfg.A, func(v int) bool {
-        return true
-    })
-    parser.Validator(&DefaultMyCfg.B, func(pv *int) bool) { // Notice the pointer
-        if *p == 22 {
-            *p = 3 // You can change the value in the validator
-        }
-        return true
-    }
-
-    _ = parser.Parse(data, &cfg)
-    // OK
-
-    fmt.Println(cfg)
-    // MyCfg{
-    //   A: -1, B: 3,
-    // }
-
-}
-
+data := []byte(`{
+    "Odd": 3, "IAM22": -1
+}`)
+parser.Parse(data, &myFoo)
+fmt.Println(myFoo)
+// {3 22}
 ```

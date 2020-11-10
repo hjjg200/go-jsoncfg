@@ -44,6 +44,9 @@ func fieldsToInterface(typ reflect.Type) reflect.Type {
 
     nf     := typ.NumField()
     fields := make([]reflect.StructField, 0)
+    verify := func(rhs reflect.Type) {
+        if typ == rhs {panic("Nesting of same type is not allowed")}
+    }
     
     for i := 0; i < nf; i++ {
 
@@ -55,29 +58,36 @@ func fieldsToInterface(typ reflect.Type) reflect.Type {
             continue
         }
 
-        switch field.Type.Kind() {
+        kind := field.Type.Kind()
+        switch kind {
         case reflect.Bool, reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32,
             reflect.Int64, reflect.Uint, reflect.Uint8, reflect.Uint16,
             reflect.Uint32, reflect.Uint64, reflect.Float32, reflect.Float64,
             reflect.String:
             field.Type = interfaceType
-        case reflect.Slice:
+        case reflect.Slice, reflect.Map:
+
             // Check for struct
-            if field.Type.Elem().Kind() == reflect.Struct {
-                field.Type = reflect.SliceOf(
-                    fieldsToInterface(field.Type.Elem()),
-                )
-            }
-        case reflect.Map:
-            // Check for struct
-            if field.Type.Elem().Kind() == reflect.Struct {
+            ftel := field.Type.Elem()
+            if ftel.Kind() != reflect.Struct {break}
+
+            verify(ftel)
+
+            switch kind {
+            case reflect.Slice:
+                field.Type = reflect.SliceOf(fieldsToInterface(ftel))
+            case reflect.Map:
                 field.Type = reflect.MapOf(
-                    field.Type.Key(), fieldsToInterface(field.Type.Elem()),
+                    field.Type.Key(), fieldsToInterface(ftel),
                 )
             }
+
         case reflect.Struct:
+            
             // Recursive
+            verify(field.Type)
             field.Type = fieldsToInterface(field.Type)
+
         default:
         }
 

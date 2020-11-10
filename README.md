@@ -6,9 +6,9 @@ import "github.com/hjjg200/go-jsoncfg"
 
 Package jsoncfg provides utility functions for configuration files in json encoding.
 
-This package is not at the final version at the moment; function names are liable to change; forking is recommended.
+This package is not at the final version at the moment; function names are liable to change.
 
-## Example
+## Examples
 
 ### Fallback for Missing Members
 
